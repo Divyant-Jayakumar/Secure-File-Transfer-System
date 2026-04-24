@@ -7,9 +7,10 @@
 #include <endian.h>
 #include <stdint.h>
 #include <unistd.h>
-#include "client_functions.h"
+#include "network_functions.h"
 
 int main() {
+
     struct addrinfo *p, *res;
     struct addrinfo hints;
 
@@ -19,8 +20,17 @@ int main() {
 
     int temp_status;
     int sockfd;
+    int command_from_server;
+    int command_to_server;
+    char message_to_server[MESSAGE_SIZE_LIMIT];
+    char message_from_server[MESSAGE_SIZE_LIMIT];
 
-    if ((temp_status = getaddrinfo("127.0.0.1", my_port, &hints, &res)) != 0) {
+    // Prompt for server IP
+    char server_ip[INET6_ADDRSTRLEN];
+    printf("Enter server IP: ");
+    scanf("%s", server_ip);
+
+    if ((temp_status = getaddrinfo(server_ip, my_port, &hints, &res)) != 0) {
         fprintf(stderr, "Error in getaddrinfo(): %s\n", gai_strerror(temp_status));
         return 1;
     }
@@ -42,39 +52,201 @@ int main() {
     freeaddrinfo(res);
 
     if (p == NULL) {
-        fprintf(stderr, "Failed to bind to any address\n");
-        return -1;
-    }
-
-
-    char filename[FIELD_SIZE_LIMIT] = "file1.txt";
-
-    // sent filename with size
-    temp_status = send_field_with_size(sockfd,filename);
-    if(temp_status == -1) {fprintf(stderr,"Error in sending filename\n"); return 1;}
-    else if (temp_status == -2) {printf("File name too long!\n");}
-
-    // Send file size
-    uint64_t filesize = get_filesize(filename);
-    if (filesize == 0) {
-        fprintf(stderr, "Failed to get file size\n");
-        return 1;
-    }
-    uint64_t filesize_net = htobe64(filesize);
-    int len = sizeof(uint64_t);
-    if (send_full(sockfd, (char*)&filesize_net, &len) == -1) {
-        fprintf(stderr, "Failed to send file size\n");
+        fprintf(stderr, "Could not connect to server\n");
         return 1;
     }
 
-    // Send file
-    if (send_file(sockfd, filename) == -1) {
-        fprintf(stderr, "Failed to send file\n");
+    // Handle registration/login
+    receive_int(sockfd, &command_from_server);
+
+    if (command_from_server == 7) {
+        printf("Server reached max user limit! Please try again later\n");
         close(sockfd);
-        return 1;
+        return 0;
+    } else if (command_from_server == 6) {
+        printf("Hello new user! Please enter username: ");
+        scanf("%s", message_to_server);
+        send_message(sockfd, message_to_server);
+        receive_message(sockfd, message_from_server);
+        printf("%s\n", message_from_server);
+    } else if (command_from_server == 5) {
+        receive_message(sockfd, message_from_server);
+        printf("%s\n", message_from_server);
     }
 
-    printf("File sent successfully!\n");
-    close(sockfd);
+    printf("\nCOMMANDS:\n");
+    printf("LIST\n");
+    printf("UPLOAD <filename> <password>\n");
+    printf("DOWNLOAD <filename> <password>\n");
+    printf("EXIT\n\n");
+
+    // Consume leftover newline from scanf before entering fgets loop
+    char discard[MESSAGE_SIZE_LIMIT];
+    fgets(discard, sizeof(discard), stdin);
+
+    while (1) {
+
+        char input_line[MESSAGE_SIZE_LIMIT * 3];
+        char command[MESSAGE_SIZE_LIMIT];
+
+        printf("Enter command: ");
+        if (fgets(input_line, sizeof(input_line), stdin) == NULL) break;
+
+        // Strip trailing newline
+        input_line[strcspn(input_line, "\n")] = '\0';
+
+        // Parse just the command first
+        if (sscanf(input_line, "%s", command) != 1) continue;
+
+        // LIST
+        if (strcmp(command, "LIST") == 0) {
+            send_message(sockfd, command);
+
+            int total_files;
+            receive_int(sockfd, &total_files);
+
+            if (total_files == 0) {
+                printf("No files stored on server\n");
+                continue;
+            }
+
+            char filename[MESSAGE_SIZE_LIMIT];
+            char file_owner[MESSAGE_SIZE_LIMIT];
+            uint64_t filesize;
+
+            printf("\n%-5s %-30s %-20s %s\n", "No.", "Filename", "Owner", "Size (bytes)");
+            printf("----------------------------------------------------------------------\n");
+            for (int i = 0; i < total_files; i++) {
+                receive_message(sockfd, filename);
+                receive_message(sockfd, file_owner);
+                receive_uint64(sockfd, &filesize);
+                printf("%-5d %-30s %-20s %lu\n", i + 1, filename, file_owner, filesize);
+            }
+            printf("\n");
+        }
+
+        // UPLOAD
+        else if (strcmp(command, "UPLOAD") == 0) {
+
+            char filename[MESSAGE_SIZE_LIMIT];
+            char password[MESSAGE_SIZE_LIMIT];
+
+            if (sscanf(input_line, "%*s %s %s", filename, password) != 2) {
+                printf("Please enter in format: UPLOAD <filename> <password>\n");
+                continue;
+            }
+
+            // Check file exists locally before contacting server
+            uint64_t filesize = get_filesize(filename);
+            if (filesize == 0) {
+                printf("File not found or empty: %s\n", filename);
+                continue;
+            }
+
+            send_message(sockfd, command);
+            receive_int(sockfd, &command_from_server);
+
+            if (command_from_server == 208) {
+                printf("Server storage capacity full!\n");
+                continue;
+            }
+
+            // 207 - proceed
+            send_message(sockfd, filename);
+            send_message(sockfd, password);
+            send_uint64(sockfd, filesize);
+
+            receive_int(sockfd, &command_from_server);
+
+            if (command_from_server == 201) {
+                char reply_line[10];
+                char reply;
+                printf("File already present on server. Overwrite it? (y/n): ");
+                fgets(reply_line, sizeof(reply_line), stdin);
+                reply = reply_line[0];
+
+                if (reply == 'y') {
+                    command_to_server = 203;
+                    send_int(sockfd, command_to_server);
+                } else {
+                    command_to_server = 204;
+                    send_int(sockfd, command_to_server);
+                    continue;
+                }
+            }
+            // 202 - new file, just proceed
+
+            if (send_file(sockfd, filename) == -1) {
+                printf("Error sending file\n");
+                continue;
+            }
+
+            receive_int(sockfd, &command_from_server);
+            if (command_from_server == 205) {
+                printf("File uploaded successfully!\n");
+            } else if (command_from_server == 206) {
+                printf("Error uploading file! Please try again\n");
+            }
+        }
+
+        // DOWNLOAD
+        else if (strcmp(command, "DOWNLOAD") == 0) {
+
+            char filename[MESSAGE_SIZE_LIMIT];
+            char password[MESSAGE_SIZE_LIMIT];
+
+            if (sscanf(input_line, "%s %s %s", command, filename, password) != 2) {
+                printf("Please enter in format: DOWNLOAD <filename> <password>\n");
+                continue;
+            }
+
+            send_message(sockfd, command);
+            send_message(sockfd, filename);
+            send_message(sockfd, password);
+
+            receive_int(sockfd, &command_from_server);
+            if (command_from_server == 302) {
+                printf("File not found on server!\n");
+                continue;
+            }
+
+            // 301 - file present
+            receive_int(sockfd, &command_from_server);
+            if (command_from_server == 304) {
+                printf("Incorrect password!\n");
+                continue;
+            }
+
+            // 303 - password correct
+            uint64_t filesize;
+            receive_uint64(sockfd, &filesize);
+
+            if (receive_file(sockfd, filename, filesize) == -1) {
+                printf("Error receiving file! Please try again\n");
+                receive_int(sockfd, &command_from_server);
+                continue;
+            }
+
+            receive_int(sockfd, &command_from_server);
+            if (command_from_server == 305) {
+                printf("File downloaded successfully!\n");
+            } else if (command_from_server == 306) {
+                printf("Error downloading file! Please try again\n");
+            }
+        }
+
+        // EXIT
+        else if (strcmp(command, "EXIT") == 0) {
+            send_message(sockfd, command);
+            printf("Exited. Thanks for using Secure-File-Transfer-System\n");
+            close(sockfd);
+            break;
+        }
+
+        else {
+            printf("Invalid command!\n");
+        }
+    }
+
     return 0;
 }

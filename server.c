@@ -7,18 +7,19 @@
 #include <endian.h>
 #include <stdint.h>
 #include <unistd.h>
-#include "server_functions.h"
+#include "network_functions.h"
 
 typedef struct user_data {
     char user_ip[INET6_ADDRSTRLEN];
-    char username[FIELD_SIZE_LIMIT];
+    char username[MESSAGE_SIZE_LIMIT];
 } user_data;
 
-typedef struct file_data{
-    char filename[FIELD_SIZE_LIMIT];
-    char password[FIELD_SIZE_LIMIT];    
-    char file_owner[FIELD_SIZE_LIMIT];
-    uint64_t filesize; 
+typedef struct file_data {
+    char filename[MESSAGE_SIZE_LIMIT];
+    char password[MESSAGE_SIZE_LIMIT];
+    char file_owner[MESSAGE_SIZE_LIMIT];
+    char owner_ip[INET6_ADDRSTRLEN];
+    uint64_t filesize;
 } file_data;
 
 user_data userdatabase[USERDATABASE_LIMIT];
@@ -38,7 +39,6 @@ int main() {
     int sockfd;
     int yes = 1;
 
-    //sets up server socket with wildcard addres
     if ((temp_status = getaddrinfo(NULL, my_port, &hints, &res)) != 0) {
         fprintf(stderr, "Error in getaddrinfo(): %s\n", gai_strerror(temp_status));
         return 1;
@@ -81,75 +81,206 @@ int main() {
         return 1;
     }
 
-    printf("Waiting for Client\n");
+    printf("Waiting for client...\n");
 
     int total_users = 0;
-    int total_files = 0; 
-    char message_to_client[250];
-    int sizeof_message_to_client;
-    char message_from_client[250];
+    int total_files = 0;
+    char message_to_client[MESSAGE_SIZE_LIMIT];
 
-    while(1){
+    while (1) {
 
         int existing_user_flag = 0;
         int clientfd;
         struct sockaddr_storage client_addr;
         char client_ip[INET6_ADDRSTRLEN];
         socklen_t client_addr_len = sizeof(client_addr);
-        char client_username[FIELD_SIZE_LIMIT];
-        int temp_sizeof;
+        char client_username[MESSAGE_SIZE_LIMIT];
+        char message_from_client[MESSAGE_SIZE_LIMIT];
+        int command_to_client;
+        int command_from_client;
 
         if ((clientfd = accept(sockfd, (struct sockaddr*)&client_addr, &client_addr_len)) == -1) {
             perror("accept");
-            return 1;
+            continue;
         }
 
         printf("Connected successfully to client\n");
         get_ip_presentation((struct sockaddr*)&client_addr, client_ip);
         printf("Client address: %s\n", client_ip);
 
-        //check if user is existing user
-        for(int i=0;i<total_users;i++){
-            if(strcmp(client_ip,userdatabase[i].user_ip)==0){
-                sprintf(message_to_client,"Welcome back %s!\n",userdatabase[i].username);
-                sizeof_message_to_client = strlen(message_to_client);
-                send_full(clientfd,message_to_client,&sizeof_message_to_client);  //error handle
+        // Check if existing user
+        for (int i = 0; i < total_users; i++) {
+            if (strcmp(client_ip, userdatabase[i].user_ip) == 0) {
+                strcpy(client_username, userdatabase[i].username);
+                command_to_client = 5;
+                send_int(clientfd, command_to_client);
+                sprintf(message_to_client, "Welcome back %s!", client_username);
+                send_message(clientfd, message_to_client);
                 existing_user_flag = 1;
                 break;
             }
         }
 
-        if(!existing_user_flag){
-            if(total_users == USERDATABASE_LIMIT) {
-                
+        // New user
+        if (!existing_user_flag) {
+            if (total_users == USERDATABASE_LIMIT) {
+                command_to_client = 7;
+                send_int(clientfd, command_to_client);
+                close(clientfd);
+                continue;
             }
-            sprintf(message_to_client,"Hello new user! Please enter username: ");
-            sizeof_message_to_client = strlen(message_to_client);
-            send_full(clientfd,message_to_client,sizeof_message_to_client);
-            receive_field_with_size(clientfd,client_username,temp_sizeof);
+
+            command_to_client = 6;
+            send_int(clientfd, command_to_client);
+
+            receive_message(clientfd, client_username);
+            strcpy(userdatabase[total_users].user_ip, client_ip);
+            strcpy(userdatabase[total_users].username, client_username);
+            sprintf(message_to_client, "Welcome %s!", client_username);
+            send_message(clientfd, message_to_client);
+            total_users++;
         }
 
-        // Receive filename
-        char filename[FIELD_SIZE_LIMIT];
-        int filename_size;
-        temp_status = receive_field_with_size(clientfd,filename,&filename_size); 
-        if(temp_status == -1){fprintf(stderr,"Error while receiving filename\n");return 1;}
-        else if (temp_status == -2) {fprintf(stderr,"Filename too long\n");return 1;} //make user try again
+        // Command loop
+        while (1) {
 
-        uint64_t filesize;
-        receive_uint64(clientfd, &filesize);
-        printf("File size: %lu bytes\n", filesize);
+            if (receive_message(clientfd, message_from_client) == -1) {
+                printf("Client disconnected unexpectedly\n");
+                break;
+            }
 
-        // Receive file
-        if (receive_file(clientfd, filename, filesize) == -1) {
-            fprintf(stderr, "Failed to receive file\n");
-            close(clientfd);
-            return 1;
+            // LIST
+            if (strcmp(message_from_client, "LIST") == 0) {
+                send_int(clientfd, total_files);
+                for (int i = 0; i < total_files; i++) {
+                    send_message(clientfd, filedatabase[i].filename);
+                    send_message(clientfd, filedatabase[i].file_owner);
+                    send_uint64(clientfd, filedatabase[i].filesize);
+                }
+            }
+
+            // UPLOAD
+            else if (strcmp(message_from_client, "UPLOAD") == 0) {
+
+                if (total_files == FILEDATABASE_LIMIT) {
+                    command_to_client = 208;
+                    send_int(clientfd, command_to_client);
+                    continue;
+                }
+
+                command_to_client = 207;
+                send_int(clientfd, command_to_client);
+
+                char filename[MESSAGE_SIZE_LIMIT];
+                char password[MESSAGE_SIZE_LIMIT];
+                uint64_t filesize;
+
+                receive_message(clientfd, filename);
+                receive_message(clientfd, password);
+                receive_uint64(clientfd, &filesize);
+
+                // Check if file already exists for this user
+                int flag_file_present = 0;
+                int existing_file_index = -1;
+                for (int i = 0; i < total_files; i++) {
+                    if (strcmp(filename, filedatabase[i].filename) == 0 &&
+                        strcmp(client_ip, filedatabase[i].owner_ip) == 0) {
+                        flag_file_present = 1;
+                        existing_file_index = i;
+                        break;
+                    }
+                }
+
+                if (flag_file_present) {
+                    command_to_client = 201;
+                    send_int(clientfd, command_to_client);
+                    receive_int(clientfd, &command_from_client);
+                    if (command_from_client == 204) continue;
+                } 
+                else {
+                    command_to_client = 202;
+                    send_int(clientfd, command_to_client);
+                }
+
+                if (receive_file(clientfd, filename, filesize) == -1) {
+                    fprintf(stderr, "Failed to receive file\n");
+                    command_to_client = 206;
+                    send_int(clientfd, command_to_client);
+                    continue;
+                }
+
+                command_to_client = 205;
+                send_int(clientfd, command_to_client);
+
+                // Update existing entry or add new one
+                int index = flag_file_present ? existing_file_index : total_files;
+                strcpy(filedatabase[index].filename, filename);
+                strcpy(filedatabase[index].password, password);
+                strcpy(filedatabase[index].file_owner, client_username);
+                strcpy(filedatabase[index].owner_ip, client_ip);
+                filedatabase[index].filesize = filesize;
+                if (!flag_file_present) total_files++;
+            }
+
+            // DOWNLOAD
+            else if (strcmp(message_from_client, "DOWNLOAD") == 0) {
+
+                char filename[MESSAGE_SIZE_LIMIT];
+                char password[MESSAGE_SIZE_LIMIT];
+                receive_message(clientfd, filename);
+                receive_message(clientfd, password);
+
+                int flag_file_found = 0;
+                int file_index = -1;
+                for (int i = 0; i < total_files; i++) {
+                    if (strcmp(filename, filedatabase[i].filename) == 0) {
+                        flag_file_found = 1;
+                        file_index = i;
+                        break;
+                    }
+                }
+
+                if (!flag_file_found) {
+                    command_to_client = 302;
+                    send_int(clientfd, command_to_client);
+                    continue;
+                }
+
+                command_to_client = 301;
+                send_int(clientfd, command_to_client);
+
+                if (strcmp(password, filedatabase[file_index].password) != 0) {
+                    command_to_client = 304;
+                    send_int(clientfd, command_to_client);
+                    continue;
+                }
+
+                command_to_client = 303;
+                send_int(clientfd, command_to_client);
+
+                send_uint64(clientfd, filedatabase[file_index].filesize);
+
+                if (send_file(clientfd, filename) == -1) {
+                    command_to_client = 306;
+                    send_int(clientfd, command_to_client);
+                    continue;
+                }
+
+                command_to_client = 305;
+                send_int(clientfd, command_to_client);
+            }
+
+            // EXIT
+            else if (strcmp(message_from_client, "EXIT") == 0) {
+                printf("Client %s disconnected\n", client_username);
+                close(clientfd);
+                break;
+            }
+
+            else {
+                printf("Unknown command received: %s\n", message_from_client);
+            }
         }
-
-        printf("File received successfully!\n");
-        close(clientfd);
-   
     }
 
     close(sockfd);
