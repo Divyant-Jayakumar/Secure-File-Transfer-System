@@ -1,3 +1,4 @@
+//read server code first to know the meaning of each code sent by server
 #define _DEFAULT_SOURCE
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -7,7 +8,12 @@
 #include <endian.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <stdlib.h>
+#include <time.h>
 #include "network_functions.h"
+//for DHKE
+const int base = 5;
+const int prime = 251;
 
 int main() {
 
@@ -25,11 +31,11 @@ int main() {
     char message_to_server[MESSAGE_SIZE_LIMIT];
     char message_from_server[MESSAGE_SIZE_LIMIT];
 
-    // Prompt for server IP
+    //get server IP
     char server_ip[INET6_ADDRSTRLEN];
     printf("Enter server IP: ");
     scanf("%s", server_ip);
-
+    //connect to server
     if ((temp_status = getaddrinfo(server_ip, my_port, &hints, &res)) != 0) {
         fprintf(stderr, "Error in getaddrinfo(): %s\n", gai_strerror(temp_status));
         return 1;
@@ -56,7 +62,12 @@ int main() {
         return 1;
     }
 
-    // Handle registration/login
+    //diffie hellman key exchange
+    srand((unsigned int)time(NULL) ^ (unsigned int)getpid());
+    int private_key = (rand() % 490) + 10;
+    unsigned char shared_key = DHKE_client(sockfd, base, prime, private_key);
+
+    // handle registration/login based on code received from server
     receive_int(sockfd, &command_from_server);
 
     if (command_from_server == 7) {
@@ -83,19 +94,19 @@ int main() {
     // Consume leftover newline from scanf before entering fgets loop
     char discard[MESSAGE_SIZE_LIMIT];
     fgets(discard, sizeof(discard), stdin);
-
+    //command processing loop
     while (1) {
 
-        char input_line[MESSAGE_SIZE_LIMIT * 3];
+        char input_line[MESSAGE_SIZE_LIMIT];
         char command[MESSAGE_SIZE_LIMIT];
 
         printf("Enter command: ");
         if (fgets(input_line, sizeof(input_line), stdin) == NULL) break;
 
-        // Strip trailing newline
+        // strip trailing newline
         input_line[strcspn(input_line, "\n")] = '\0';
 
-        // Parse just the command first
+        // parse just the command first
         if (sscanf(input_line, "%s", command) != 1) continue;
 
         // LIST
@@ -130,13 +141,13 @@ int main() {
 
             char filename[MESSAGE_SIZE_LIMIT];
             char password[MESSAGE_SIZE_LIMIT];
-
-            if (sscanf(input_line, "%*s %s %s", filename, password) != 2) {
+            //check if input format correct
+            if (sscanf(input_line, "%s %s %s",command, filename, password) != 3) {
                 printf("Please enter in format: UPLOAD <filename> <password>\n");
                 continue;
             }
 
-            // Check file exists locally before contacting server
+            // check file exists locally before contacting server
             uint64_t filesize = get_filesize(filename);
             if (filesize == 0) {
                 printf("File not found or empty: %s\n", filename);
@@ -157,7 +168,7 @@ int main() {
             send_uint64(sockfd, filesize);
 
             receive_int(sockfd, &command_from_server);
-
+            //file already present - we can still send or cancel upload
             if (command_from_server == 201) {
                 char reply_line[10];
                 char reply;
@@ -174,13 +185,14 @@ int main() {
                     continue;
                 }
             }
-            // 202 - new file, just proceed
+            // 202 - it is new file, proceed
 
-            if (send_file(sockfd, filename) == -1) {
+            //send file
+            if (send_file(sockfd, filename, shared_key) == -1) {
                 printf("Error sending file\n");
                 continue;
             }
-
+            //upload status received
             receive_int(sockfd, &command_from_server);
             if (command_from_server == 205) {
                 printf("File uploaded successfully!\n");
@@ -194,12 +206,12 @@ int main() {
 
             char filename[MESSAGE_SIZE_LIMIT];
             char password[MESSAGE_SIZE_LIMIT];
-
-            if (sscanf(input_line, "%s %s %s", command, filename, password) != 2) {
+            //check if input in correct format
+            if (sscanf(input_line, "%s %s %s", command, filename, password) != 3) {
                 printf("Please enter in format: DOWNLOAD <filename> <password>\n");
                 continue;
             }
-
+            
             send_message(sockfd, command);
             send_message(sockfd, filename);
             send_message(sockfd, password);
@@ -221,12 +233,12 @@ int main() {
             uint64_t filesize;
             receive_uint64(sockfd, &filesize);
 
-            if (receive_file(sockfd, filename, filesize) == -1) {
+            if (receive_file(sockfd, filename, filesize, shared_key) == -1) {
                 printf("Error receiving file! Please try again\n");
                 receive_int(sockfd, &command_from_server);
                 continue;
             }
-
+            //receive file transmission status
             receive_int(sockfd, &command_from_server);
             if (command_from_server == 305) {
                 printf("File downloaded successfully!\n");

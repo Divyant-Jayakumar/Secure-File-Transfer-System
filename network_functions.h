@@ -20,13 +20,16 @@ void get_ip_presentation(struct sockaddr* addr, char* client_ip);
 int recv_full(int sockfd, char* message, int* len);
 int receive_uint64(int sockfd, uint64_t* var);
 int receive_int(int sockfd, int* var);
-int receive_file(int sockfd, char* filename, uint64_t file_size);
+int receive_file(int sockfd, char* filename, uint64_t file_size, char shared_key);
 int receive_message(int sockfd, char* field);
 int send_full(int sockfd, char* message, int* len);
 uint64_t get_filesize(char* filename);
-int send_file(int sockfd, char* filename);
+int send_file(int sockfd, char* filename, char shared_key);
 int send_message(int sockfd, char* field);
 int send_int(int sockfd, int value);
 int send_uint64(int sockfd, uint64_t filesize);
+int power (int base, int modulo, int exponent);
+unsigned char DHKE_server(int sockfd, int base, int prime, int private_key);
+unsigned char DHKE_client(int sockfd, int base, int prime, int private_key);
 
 #endif
