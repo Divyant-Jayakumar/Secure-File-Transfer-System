@@ -1,0 +1,10 @@
+server:  server.o network_functions.a
+	gcc $^ -o $@
+network_functions.a: network_functions.o
+	ar rcs $@ $^
+%.o: %.c network_functions.h
+	gcc -c $<
+clean: 
+	rm -f *.o network_functions.a
+
+
