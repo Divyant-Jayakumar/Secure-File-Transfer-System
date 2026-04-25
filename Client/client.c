@@ -185,6 +185,11 @@ int main() {
                     continue;
                 }
             }
+            else if(command_from_server == 209){ // file exists by different owner 
+                printf("File with same name owned by another user! Please change filename and try again\n");
+                continue;
+            }
+            
             // 202 - it is new file, proceed
 
             //send file

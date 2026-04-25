@@ -10,7 +10,7 @@
 
 #define MESSAGE_SIZE_LIMIT 300
 #define USERDATABASE_LIMIT 25
-#define FILEDATABASE_LIMIT 100
+#define FILEDATABASE_LIMIT 200
 
 extern const char* my_port;
 extern const int backlog;

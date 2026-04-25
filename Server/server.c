@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <time.h>
+#include <ifaddrs.h>
 #include "network_functions.h"
 
 typedef struct user_data {
@@ -69,9 +70,37 @@ int main() {
         }
 
         printf("Socket bound and ready!\n");
-        char server_ip_presentation[INET6_ADDRSTRLEN];
-        get_ip_presentation(p->ai_addr, server_ip_presentation);
-        printf("Server ip: %s\n", server_ip_presentation);
+        //prints all the IP address of host and corresponding network interface
+        printf("Server is reachable at:\n");
+
+        struct ifaddrs *ifaddr, *ifa;
+        char ip_buf[INET6_ADDRSTRLEN];
+
+        if (getifaddrs(&ifaddr) == -1) {
+            perror("getifaddrs");
+        } 
+        else {
+            for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+                if (ifa->ifa_addr == NULL) continue;
+
+                if (ifa->ifa_addr->sa_family == AF_INET) {
+                    struct sockaddr_in *addr = (struct sockaddr_in*)ifa->ifa_addr;
+                    inet_ntop(AF_INET, &addr->sin_addr, ip_buf, sizeof(ip_buf));
+                    if (strcmp(ip_buf, "127.0.0.1") != 0)  // skip loopback
+                        printf("  [%s] %s:%s\n", ifa->ifa_name, ip_buf, my_port);
+                }
+
+            
+                else if (ifa->ifa_addr->sa_family == AF_INET6) {
+                    struct sockaddr_in6 *addr = (struct sockaddr_in6*)ifa->ifa_addr;
+                    inet_ntop(AF_INET6, &addr->sin6_addr, ip_buf, sizeof(ip_buf));
+                    if (strcmp(ip_buf, "::1") != 0)  // skip loopback
+                        printf("  [%s] %s:%s\n", ifa->ifa_name, ip_buf, my_port);
+                }
+            }
+            freeifaddrs(ifaddr);
+        }
+
         break;
     }
 
@@ -205,14 +234,23 @@ int main() {
                         existing_file_index = i;
                         break;
                     }
+                    else if(strcmp(filename, filedatabase[i].filename) == 0){ 
+                        flag_file_present = 2;
+                        break;
+                    }
                 }
 
-                if (flag_file_present) {
+                if (flag_file_present == 1) {
                     command_to_client = 201; //letting client know file already exists
                     send_int(clientfd, command_to_client);
                     receive_int(clientfd, &command_from_client);
                     if (command_from_client == 204) continue; //client cancels upload
                 } 
+                else if(flag_file_present == 2){
+                    command_to_client = 209; // file exists but by different user
+                    send_int(clientfd, command_to_client);
+                    continue;
+                }
                 else {
                     command_to_client = 202; //letting client know file doesnt already exist
                     send_int(clientfd, command_to_client);
@@ -227,6 +265,7 @@ int main() {
 
                 command_to_client = 205; //letting client know file uploaded sucessfully
                 send_int(clientfd, command_to_client);
+                printf("File %s uploaded sucessfully by %s\n",filename,client_username);
 
                 // update existing entry or add new one
                 int index = flag_file_present ? existing_file_index : total_files;
@@ -284,6 +323,7 @@ int main() {
 
                 command_to_client = 305; //letting client know file sent without error
                 send_int(clientfd, command_to_client);
+                printf("File %s sent to client %s sucessfully\n",filename,client_username);
             }
 
             // EXIT
