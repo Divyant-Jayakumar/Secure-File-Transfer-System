@@ -47,7 +47,7 @@ Maximum files that can be stores: 200
 Size limit for username, filename, password: 300  
 File size limit: 0.5 GB  
 
-##Requirements
+## Requirements
 Linux OS  
 GCC compiler  
 Make  
