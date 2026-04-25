@@ -8,7 +8,7 @@ Features:
 * User registration & recognition of existing users: new users asked to register by giving username and old users are welcomed back - found using client ip
 * File upload & download with password protection per file
 * File listing: view all files stored on the server
-* Overwrite protection: prompts before overwriting an existing file
+* Overwrite protection: prompts before overwriting an existing file. Doesnt allow two users to have file with same name. 
 
 How it works:
 When the server starts, it creates a TCP socket and binds it to the host’s IP address (Wildcard address). It is configured to listen on all available network interfaces, allowing it to accept connections from any network the host machine is connected to. The server also prints all available IP addresses along with their corresponding network interfaces for reference.
@@ -16,16 +16,26 @@ A client connects to the server by providing the server’s IP address. It estab
 
 There are 4 commands: LIST, UPLOAD, DOWNLOAD, EXIT. 
 LIST: Displays all files stored on the server, with the filename, owner, and size (in bytes) 
-UPLOAD: Uploads file to server. If file is already present prompts for confirmation before updating it
-DOWNLOAD: we can download any file present on the server provided we know its passowrd
-EXIT: to close connection 
+UPLOAD <filename> <password>: Uploads file to server with password. If file is already present prompts for confirmation before updating it
+DOWNLOAD <filename> <password>: we can download any file present on the server provided we know its passowrd
+EXIT: to end session 
 
- All network functions such as send message, receive message and many more iseful functions are present in the network_functions library. The client and server communicate with each other by usind predefined status codes.Both the client and server print messages updating progress. 
+All networking operations such as sending and receiving messages, along with many other functions are implemented in the network_functions library. The client and server communicate with each other by usind predefined status codes. Both the client and server print informative messages updating progress/status. 
 
 How to use: 
+
 Server:
-Download the Server file.
-Run make "-f Makefile_server"
+Download the Server folder 
+Run "make -f Makefile_server"
 run the executable ./server
 Now the server is up and running, waiting for client. 
+
+Client:
+Download the Client folder 
+Run "make -f Makefile_client"
+run the executable ./client
+To connect to server we need to provide server IP or if we want to test internally enter 127.0.0.1 
+If new user provide username
+Enter required command, ensure to use UPLOAD and DOWNLOAD with expected format. An error will be shown for invalid command or invalid format 
+To end session enter EXIT command
 
