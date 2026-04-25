@@ -28,7 +28,10 @@ All networking operations such as sending and receiving messages, along with man
 Download the Server folder  
 Run "make -f Makefile_server"  
 run the executable ./server  
-Now the server is up and running, waiting for client.  
+Now the server is up and running, waiting for client  
+prints IP correcponding to each existing network interface in the format  
+[interface] address:port  
+eg. [wlo1] 172.20.10.3:3942  
 
 ### Client:
 Download the Client folder  
@@ -36,8 +39,10 @@ Run "make -f Makefile_client"
 run the executable ./client  
 To connect to server we need to provide server IP or if we want to test internally enter 127.0.0.1  
 If new user provide username  
-Have files we want to upload inside this folder  
+Have files we want to upload inside the Client folder  
 Enter required command  
+e.g UPLOAD file1.txt abc  
+    DOWNLOAD Toadays_notes.pdf aaa  
 NOTE: Filename must be given with extension. Ensure to use UPLOAD and DOWNLOAD with expected format. An error will be shown for invalid command or invalid format.  
 To end session enter EXIT command  
 
