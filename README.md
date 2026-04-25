@@ -27,6 +27,7 @@ All networking operations such as sending and receiving messages, along with man
 ### Server:  
 Download the Server folder  
 Run "make -f Makefile_server"  
+To ensure firewall doesnt block incoming connections to port 3942, run "sudo iptables -I INPUT -p tcp --dport 3942 -j ACCEPT" on terminal  
 run the executable ./server  
 Now the server is up and running, waiting for client  
 prints IP correcponding to each existing network interface in the format  
