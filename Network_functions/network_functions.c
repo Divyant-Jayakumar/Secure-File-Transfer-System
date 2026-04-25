@@ -58,7 +58,7 @@ int receive_int(int clientfd, int* var) {
     return 0;
 }
 
-int receive_file(int clientfd, char* filename, uint64_t file_size, char shared_key) {
+int receive_file(int clientfd, char* filename, uint64_t file_size, unsigned char shared_key) {
     FILE* fout = fopen(filename, "wb");
     if (fout == NULL) { fprintf(stderr, "Error in opening file\n"); return -1; }
 
@@ -135,7 +135,7 @@ uint64_t get_filesize(char* filename) {
     return size;
 }
 
-int send_file(int sockfd, char* filename, char shared_key) {
+int send_file(int sockfd, char* filename, unsigned char shared_key) {
     uint64_t file_size = get_filesize(filename);
     if (file_size == 0) { fprintf(stderr, "File is empty or could not get size\n"); return -1; }
 

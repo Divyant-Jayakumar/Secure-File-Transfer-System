@@ -74,13 +74,15 @@ int main() {
         printf("Server reached max user limit! Please try again later\n");
         close(sockfd);
         return 0;
-    } else if (command_from_server == 6) {
+    } 
+    else if (command_from_server == 6) {
         printf("Hello new user! Please enter username: ");
         scanf("%s", message_to_server);
         send_message(sockfd, message_to_server);
         receive_message(sockfd, message_from_server);
         printf("%s\n", message_from_server);
-    } else if (command_from_server == 5) {
+    } 
+    else if (command_from_server == 5) {
         receive_message(sockfd, message_from_server);
         printf("%s\n", message_from_server);
     }
@@ -97,7 +99,7 @@ int main() {
     //command processing loop
     while (1) {
 
-        char input_line[MESSAGE_SIZE_LIMIT];
+        char input_line[MESSAGE_SIZE_LIMIT*3];
         char command[MESSAGE_SIZE_LIMIT];
 
         printf("Enter command: ");
@@ -189,7 +191,7 @@ int main() {
                 printf("File with same name owned by another user! Please change filename and try again\n");
                 continue;
             }
-            
+
             // 202 - it is new file, proceed
 
             //send file
@@ -201,7 +203,8 @@ int main() {
             receive_int(sockfd, &command_from_server);
             if (command_from_server == 205) {
                 printf("File uploaded successfully!\n");
-            } else if (command_from_server == 206) {
+            } 
+            else if (command_from_server == 206) {
                 printf("Error uploading file! Please try again\n");
             }
         }
@@ -247,7 +250,8 @@ int main() {
             receive_int(sockfd, &command_from_server);
             if (command_from_server == 305) {
                 printf("File downloaded successfully!\n");
-            } else if (command_from_server == 306) {
+            } 
+            else if (command_from_server == 306) {
                 printf("Error downloading file! Please try again\n");
             }
         }
