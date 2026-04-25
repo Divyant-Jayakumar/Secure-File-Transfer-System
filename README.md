@@ -42,6 +42,7 @@ NOTE: Filename must be given with extension. Ensure to use UPLOAD and DOWNLOAD w
 To end session enter EXIT command  
 
 ## Constraints: 
+File name should not contain spaces  
 Maximum total registered users: 25  
 Maximum files that can be stores: 200  
 Size limit for username, filename, password: 300  
